@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use App\Models\Patient;
 use App\Models\Doctor;
@@ -326,3 +327,151 @@ Route::delete('/appointments/{id}', function ($id) {
         'message' => 'Appointment deleted successfully'
     ]);
 });
+
+// ==========================================
+// AUTHENTICATION APIs
+// ==========================================
+
+// Simple Login (for mobile app - returns token)
+Route::post('/login', function (Request $request) {
+    $request->validate([
+        'email' => 'required|email',
+        'password' => 'required|string',
+    ]);
+    
+    $user = \App\Models\User::where('email', $request->email)->first();
+    
+    if (!$user || !Hash::check($request->password, $user->password)) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid credentials'
+        ], 401);
+    }
+    
+    $token = $user->createToken('mobile-app')->plainTextToken;
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Login successful',
+        'data' => [
+            'token' => $token,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role ?? 'Admin',
+            ]
+        ]
+    ]);
+});
+
+// Logout
+Route::post('/logout', function (Request $request) {
+    $request->user()->currentAccessToken()->delete();
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Logged out successfully'
+    ]);
+})->middleware('auth:sanctum');
+
+// ==========================================
+// USER PROFILE MANAGEMENT APIs
+// ==========================================
+
+// Get Current User Profile
+Route::get('/profile', function (Request $request) {
+    $user = $request->user();
+    
+    return response()->json([
+        'status' => 'success',
+        'data' => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => $user->phone ?? null,
+            'role' => $user->role ?? 'Admin',
+            'avatar' => $user->avatar ?? null,
+            'email_verified_at' => $user->email_verified_at,
+            'created_at' => $user->created_at->format('d M Y'),
+        ]
+    ]);
+})->middleware('auth:sanctum');
+
+// Update Profile (Name, Email, Phone)
+Route::put('/profile', function (Request $request) {
+    $user = $request->user();
+    
+    $validator = validator($request->all(), [
+        'name' => 'sometimes|required|string|max:255',
+        'email' => 'sometimes|required|email|max:255|unique:users,email,' . $user->id,
+        'phone' => 'nullable|string|max:20',
+    ]);
+    
+    if ($validator->fails()) {
+        return response()->json(['status' => 'error', 'errors' => $validator->errors()], 422);
+    }
+    
+    $user->update($validator->validated());
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Profile updated successfully',
+        'data' => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => $user->phone,
+        ]
+    ]);
+})->middleware('auth:sanctum');
+
+// Change Password
+Route::put('/change-password', function (Request $request) {
+    $user = $request->user();
+    
+    $request->validate([
+        'current_password' => 'required|string',
+        'password' => 'required|string|min:8|confirmed',
+    ]);
+    
+    if (!Hash::check($request->current_password, $user->password)) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Current password is incorrect'
+        ], 422);
+    }
+    
+    $user->update([
+        'password' => Hash::make($request->password)
+    ]);
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Password changed successfully'
+    ]);
+})->middleware('auth:sanctum');
+
+// Upload Avatar
+Route::post('/profile/avatar', function (Request $request) {
+    $user = $request->user();
+    
+    $request->validate([
+        'avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+    ]);
+    
+    if ($user->avatar && file_exists(public_path($user->avatar))) {
+        unlink(public_path($user->avatar));
+    }
+    
+    $avatarName = time() . '.' . $request->avatar->extension();
+    $request->avatar->move(public_path('avatars'), $avatarName);
+    
+    $user->update(['avatar' => 'avatars/' . $avatarName]);
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Avatar updated successfully',
+        'data' => ['avatar' => 'avatars/' . $avatarName]
+    ]);
+})->middleware('auth:sanctum');
