@@ -1,0 +1,23 @@
+#header {
+    transition: transform 0.35s ease-in-out, box-shadow 0.3s ease;
+    will-change: transform;
+}
+#header.header-hidden {
+    transform: translateY(-100%);
+}
+#sidebar {
+    position: fixed !important;
+    top: 60px;
+    left: 0;
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+    z-index: 995;
+    transition: top 0.35s ease-in-out;
+}
+body.header-is-hidden #sidebar {
+    top: 0;
+    height: 100vh;
+}
+#main {
+    transition: margin-top 0.35s ease-in-out;
+}
